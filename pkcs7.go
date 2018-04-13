@@ -38,6 +38,10 @@ var ErrUnsupportedContentType = errors.New("pkcs7: cannot parse data: unimplemen
 type unsignedData []byte
 
 var (
+	// Authenticode signing OIDs
+	OIDspcIndirectDataContext = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 1, 4}
+	OIDspcPEImageData         = asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 311, 2, 1, 15}
+
 	// Signed Data OIDs
 	OIDData                   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 1}
 	OIDSignedData             = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 2}
@@ -46,6 +50,7 @@ var (
 	OIDAttributeContentType   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 3}
 	OIDAttributeMessageDigest = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 4}
 	OIDAttributeSigningTime   = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 5}
+	OIDAttributeSmimeCaps     = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 9, 15}
 
 	// Digest Algorithms
 	OIDDigestAlgorithmSHA1   = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
@@ -72,10 +77,13 @@ var (
 
 	// Encryption Algorithms
 	OIDEncryptionAlgorithmDESCBC     = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 7}
+	OIDEncryptionAlgorithmRC2CBC     = asn1.ObjectIdentifier{1, 2, 840, 113549, 3, 2}
 	OIDEncryptionAlgorithmDESEDE3CBC = asn1.ObjectIdentifier{1, 2, 840, 113549, 3, 7}
-	OIDEncryptionAlgorithmAES256CBC  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 42}
-	OIDEncryptionAlgorithmAES128GCM  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 6}
 	OIDEncryptionAlgorithmAES128CBC  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 2}
+	OIDEncryptionAlgorithmAES128GCM  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 6}
+	OIDEncryptionAlgorithmAES192CBC  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 22}
+	OIDEncryptionAlgorithmAES192GCM  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 26}
+	OIDEncryptionAlgorithmAES256CBC  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 42}
 	OIDEncryptionAlgorithmAES256GCM  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 1, 46}
 )
 
@@ -170,7 +178,7 @@ func Parse(data []byte) (p7 *PKCS7, err error) {
 
 	// fmt.Printf("--> Content Type: %s", info.ContentType)
 	switch {
-	case info.ContentType.Equal(OIDSignedData):
+	case info.ContentType.Equal(OIDSignedData), info.ContentType.Equal(OIDspcIndirectDataContext):
 		return parseSignedData(info.Content.Bytes)
 	case info.ContentType.Equal(OIDEnvelopedData):
 		return parseEnvelopedData(info.Content.Bytes)
