@@ -128,8 +128,11 @@ func parseSignedData(data []byte) (*PKCS7, error) {
 			return nil, err
 		}
 	}
-	// Compound octet string
-	if compound.IsCompound {
+	if sd.ContentInfo.ContentType.Equal(OIDspcIndirectDataContext) {
+		// Don't parse the nested ASN if this is an image signature
+		content = compound.Bytes
+	} else if compound.IsCompound {
+		// Compound octet string
 		if compound.Tag == 4 {
 			if _, err = asn1.Unmarshal(compound.Bytes, &content); err != nil {
 				return nil, err
