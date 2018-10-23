@@ -44,6 +44,7 @@ func NewSignedData(data []byte) (*SignedData, error) {
 type SignerInfoConfig struct {
 	ExtraSignedAttributes   []Attribute
 	ExtraUnsignedAttributes []Attribute
+	NoAttributes            bool
 }
 
 type signedData struct {
@@ -132,28 +133,36 @@ func (sd *SignedData) AddSignerChain(ee *x509.Certificate, pkey crypto.PrivateKe
 	if err != nil {
 		return err
 	}
-	attrs := &attributes{}
-	attrs.Add(OIDAttributeContentType, sd.sd.ContentInfo.ContentType)
-	attrs.Add(OIDAttributeMessageDigest, sd.messageDigest)
-	attrs.Add(OIDAttributeSigningTime, time.Now())
-	for _, attr := range config.ExtraSignedAttributes {
-		attrs.Add(attr.Type, attr.Value)
-	}
-	finalAttrs, err := attrs.ForMarshalling()
-	if err != nil {
-		return err
-	}
-	unsigned_attrs := &attributes{}
-	for _, attr := range config.ExtraUnsignedAttributes {
-		unsigned_attrs.Add(attr.Type, attr.Value)
-	}
-	finalUnsignedAttrs, err := unsigned_attrs.ForMarshalling()
-	if err != nil {
-		return err
-	}
-	signature, err := signAttributes(finalAttrs, pkey, hash)
-	if err != nil {
-		return err
+	var signature []byte
+	var finalAttrs []attribute
+	var finalUnsignedAttrs []attribute
+	if config.NoAttributes {
+		key := pkey.(crypto.Signer)
+		signature, err = key.Sign(rand.Reader, sd.messageDigest, hash)
+	} else {
+		attrs := &attributes{}
+		attrs.Add(OIDAttributeContentType, sd.sd.ContentInfo.ContentType)
+		attrs.Add(OIDAttributeMessageDigest, sd.messageDigest)
+		attrs.Add(OIDAttributeSigningTime, time.Now().UTC())
+		for _, attr := range config.ExtraSignedAttributes {
+			attrs.Add(attr.Type, attr.Value)
+		}
+		finalAttrs, err = attrs.ForMarshalling()
+		if err != nil {
+			return err
+		}
+		unsignedAttrs := &attributes{}
+		for _, attr := range config.ExtraUnsignedAttributes {
+			unsignedAttrs.Add(attr.Type, attr.Value)
+		}
+		finalUnsignedAttrs, err = unsignedAttrs.ForMarshalling()
+		if err != nil {
+			return err
+		}
+		signature, err = signAttributes(finalAttrs, pkey, hash)
+		if err != nil {
+			return err
+		}
 	}
 	var ias issuerAndSerial
 	ias.SerialNumber = ee.SerialNumber
@@ -334,4 +343,25 @@ func DegenerateCertificate(cert []byte) ([]byte, error) {
 		Content:     asn1.RawValue{Class: 2, Tag: 0, Bytes: content, IsCompound: true},
 	}
 	return asn1.Marshal(signedContent)
+}
+
+// NewSignedImage takes a UEFI ASN1 struct (constructed externally) and initializes a
+// PKCS7 SignedData struct that is ready to be signed via AddSigner. The digest algorithm
+// is set to SHA2-256 by default and can be changed by calling SetDigestAlgorithm.
+func NewSignedImage(data []byte) (*SignedData, error) {
+	ci := contentInfo{
+		ContentType: OIDspcIndirectDataContext,
+		Content:     asn1.RawValue{Class: 2, Tag: 0, Bytes: data, IsCompound: true},
+	}
+	// This is to mimic the functionality of sbsigntools/src/idc.c, where
+	// the leading two bytes of the data structure are trimmed to handle cases
+	// with the original OpenSSL PKCS7 implementation that couldn't handle non-standard
+	// ASN1 structures.
+	// See: https://git.kernel.org/pub/scm/linux/kernel/git/jejb/sbsigntools.git/tree/src/idc.c
+	trimmedData := data[2:]
+	sd := signedData{
+		ContentInfo: ci,
+		Version:     1,
+	}
+	return &SignedData{sd: sd, data: trimmedData, digestOid: OIDDigestAlgorithmSHA256}, nil
 }
